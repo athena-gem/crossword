@@ -42,11 +42,18 @@
   .grid{width:100%;border-collapse:collapse;table-layout:fixed;user-select:none;background:#fff;border:1px solid var(--grid);border-radius:10px;overflow:hidden}
   .grid td{
     width:28px;height:28px;border:1px solid var(--grid);text-align:center;vertical-align:middle;font-weight:700;position:relative;
-    font-family:"Quicksand","Noto Sans JP",sans-serif; /* 盤面も単層a */
+    font-family:"Quicksand","Noto Sans JP",sans-serif;
     font-size:18px; line-height:28px;
   }
-  .grid .block{background:#b0b0b0;color:#b0b0b0} /* 印刷で見やすいグレー */
+  /* 書き込み不要マス（ブロック）は常にグレー */
+  .grid .block{background:#b0b0b0;color:#b0b0b0}
   .grid .num{position:absolute;left:2px;top:1px;font-size:9px;font-weight:700;color:#6b7280}
+
+  /* 先頭文字の色（よこ＝水色、たて＝ピンク、両方＝紫） */
+  .start-across{ color:#10b7ff; }  /* 水色 */
+  .start-down  { color:#ff4da6; }  /* ピンク */
+  .start-both  { color:#7a5cff; }  /* 紫（混色イメージ） */
+
   .legend{display:grid;gap:16px;grid-template-columns:1fr 1fr}
   .legend h3{margin:0 0 8px;font-size:14px}
   ul{margin:0;padding-left:18px}
@@ -170,7 +177,6 @@ async function loadConfig(){
     FOOTER    = cfg.footer || "";
     if(POLICY){ document.getElementById("policyNote").textContent = POLICY; document.getElementById("policyShort").textContent = POLICY; }
     if(FOOTER){ document.getElementById("footerText").textContent = FOOTER; }
-    // 初期語群（任意）を左欄へ流し込む
     if (Array.isArray(cfg.words) && cfg.words.length){
       const lines = cfg.words.map(x => `${(x.word||"").trim()},${(x.hint||"").trim()}`).join("\n");
       document.getElementById("wordInput").value = lines;
@@ -215,15 +221,12 @@ document.getElementById("hashBtn").addEventListener("click", async ()=>{
   document.getElementById("hashOut").textContent = json;
 });
 
-/* ====== ここからクロスワード機能（大小保持版） ====== */
+/* ====== ここからクロスワード機能（大小保持＋先頭色分け） ====== */
 
 /* 入力語から「文字だけ」を取り出す（表示用は元の大小を保持） */
 function lettersDisplayArray(word){
   const arr=[]; for(const ch of word){ if(/[A-Za-z]/.test(ch)) arr.push(ch); }
-  return arr; // e.g. "Mt. Fuji" -> ["M","t","F","u","j","i"]
-}
-function lettersUpperArray(word){
-  return lettersDisplayArray(word).map(ch => ch.toUpperCase());
+  return arr;
 }
 
 function rngFromSeed(seed){let h=1779033703^seed.length;for(let i=0;i<seed.length;i++){h=Math.imul(h^seed.charCodeAt(i),3432918353);h=(h<<13)|(h>>>19)}return function(){h=Math.imul(h^(h>>>16),2246822507);h=Math.imul(h^(h>>>13),3266489909);let t=(h^=h>>>16)>>>0;return t/4294967296}}
@@ -240,7 +243,7 @@ class Grid{
   placeWord(displayLetters, r, c, d){
     for(let k=0;k<displayLetters.length;k++){
       const rr=r+(d===DIR.V?k:0), cc=c+(d===DIR.H?k:0);
-      this.set(rr,cc,displayLetters[k]); // 大小そのまま格納
+      this.set(rr,cc,displayLetters[k]);
     }
   }
 
@@ -252,7 +255,7 @@ class Grid{
       const rr=r+dr*k, cc=c+dc*k, cell=this.get(rr,cc);
       const wantUpper = displayLetters[k].toUpperCase();
       if(cell==="#") return false;
-      if(cell!=="" && cell.toUpperCase()!==wantUpper) return false; // 大小無視で一致要求
+      if(cell!=="" && cell.toUpperCase()!==wantUpper) return false; // 大小無視一致
       if(n>1 && cell===""){
         const ar=(d===DIR.H)?[-1,1]:[0,0], ac=(d===DIR.H)?[0,0]:[-1,1];
         for(let t=0;t<2;t++){
@@ -301,17 +304,14 @@ class Grid{
   }
 }
 
-/* ========= 生成アルゴリズム（大小保持） ========= */
+/* 生成 */
 function buildCrossword(items, size, tries=400, seedStr=""){
   const rnd = seedStr ? rngFromSeed(seedStr) : Math.random;
-  // items: {displayWord, clue, lettersDisp[], lettersUpper[]}
   const words = items.map(x=>{
     const dispArr = lettersDisplayArray(x.displayWord);
-    const upArr   = dispArr.map(ch=>ch.toUpperCase());
-    return { displayWord:x.displayWord, clue:x.clue, dispArr, upArr };
+    return { displayWord:x.displayWord, clue:x.clue, dispArr };
   }).filter(x=> x.dispArr.length>0);
 
-  // 長い語優先（同長は辞書順）
   words.sort((a,b)=> b.dispArr.length - a.dispArr.length || a.displayWord.localeCompare(b.displayWord, 'en'));
 
   let best=null;
@@ -319,7 +319,6 @@ function buildCrossword(items, size, tries=400, seedStr=""){
     const seed = seedStr ? seedStr : (Math.random()+"").slice(2);
     const rlocal = seedStr ? rnd : rngFromSeed(seed);
 
-    // 同長バケットをシャッフル
     let bucketed=[]; let i=0;
     while(i<words.length){
       let j=i; while(j<words.length && words[j].dispArr.length===words[i].dispArr.length) j++;
@@ -328,7 +327,7 @@ function buildCrossword(items, size, tries=400, seedStr=""){
     }
 
     const g=new Grid(size);
-    const placed=[]; // {dispArr, clue, r,c,d}
+    const placed=[];
     const unplaced=[];
 
     if(bucketed.length){
@@ -376,12 +375,10 @@ function buildCrossword(items, size, tries=400, seedStr=""){
   return best;
 }
 
-/* ========= 番号付け & 出力（座標一致で手掛かりを取得） ========= */
+/* 番号付け */
 function makeNumbers(grid, placed){
   const N=grid.n;
-
   function isLetterCell(r,c){ const v=grid.get(r,c); return v!=="" && v!=="#"; }
-
   function isStartH(r,c){
     if(!isLetterCell(r,c)) return false;
     if(c>0 && isLetterCell(r,c-1)) return false;
@@ -418,29 +415,52 @@ function makeNumbers(grid, placed){
   }
 
   const across=[], down=[];
-  for(const st of startsA){ const w=readWord(st.r,st.c,0); across.push({num:st.num, ans:w, clue:findClueByStart(st.r,st.c,0)}); }
-  for(const st of startsD){ const w=readWord(st.r,st.c,1); down  .push({num:st.num, ans:w, clue:findClueByStart(st.r,st.c,1)}); }
+  for(const st of startsA){ const w=readWord(st.r,st.c,0); across.push({num:st.num, ans:w, clue:findClueByStart(st.r,st.c,0), r:st.r, c:st.c}); }
+  for(const st of startsD){ const w=readWord(st.r,st.c,1); down  .push({num:st.num, ans:w, clue:findClueByStart(st.r,st.c,1), r:st.r, c:st.c}); }
   return {numbers, across, down};
 }
 
-/* ========= レンダリング（解答の大小を保持） ========= */
+/* レンダリング（先頭色分け＋解答表示時も空きマスはグレー） */
 function render(grid, numbering, hide=false){
   const N=grid.n, host=document.getElementById('gridHost');
   const tbl=document.createElement('table'); tbl.className="grid";
+
+  // 先頭セルの座標セットを用意
+  const startH = new Set(numbering.across.map(s=> `${s.r},${s.c}`));
+  const startV = new Set(numbering.down  .map(s=> `${s.r},${s.c}`));
+
   for(let r=0;r<N;r++){
     const tr=document.createElement('tr');
     for(let c=0;c<N;c++){
       const td=document.createElement('td');
       const ch=grid.get(r,c);
+
+      // 書き込み不要マスは常にグレー
+      if(ch==="" || ch==="#"){ td.className="block"; tr.appendChild(td); continue; }
+
       if(hide){
-        if(ch===""){ td.className="block"; }
-        else if(ch==="#"){ td.className="block"; }
-        else { td.textContent=""; } // 文字は隠す
+        // 問題配布モード：文字は隠す
+        td.textContent=""; 
       }else{
-        if(ch==="#"){ td.className="block"; }
-        else if(ch===""){ td.textContent=""; }
-        else { td.textContent = ch; } // 大小そのまま表示
+        // 解答表示モード：文字を表示、先頭は色付け
+        const key = `${r},${c}`;
+        let cls = "";
+        const isH = startH.has(key);
+        const isV = startV.has(key);
+        if(isH && isV) cls = "start-both";
+        else if(isH)  cls = "start-across";
+        else if(isV)  cls = "start-down";
+
+        if(cls){
+          const span = document.createElement('span');
+          span.className = cls;
+          span.textContent = ch; // 大小保持
+          td.appendChild(span);
+        }else{
+          td.textContent = ch;
+        }
       }
+
       const num = numbering.numbers[r][c];
       if(num){ const d=document.createElement('div'); d.className="num"; d.textContent=num; td.appendChild(d); }
       tr.appendChild(td);
@@ -454,21 +474,21 @@ function render(grid, numbering, hide=false){
   down  .innerHTML = numbering.down  .map(x=> `<li><span class="mono">${x.num}</span> ${x.clue}</li>`).join("");
 }
 
-/* ========= 入力処理 ========= */
+/* 入力処理 */
 function parseInput(text){
   const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
   const items=[];
   for(const line of lines){
     const parts = line.split(/\t| {2,}|,|，/);
     if(parts.length<2) continue;
-    const displayWord = parts[0].trim();   // 大小そのまま保持
+    const displayWord = parts[0].trim();   // 大小そのまま
     const clue        = parts.slice(1).join(" ").trim();
     items.push({displayWord, clue});
   }
   return items;
 }
 
-/* ========= サンプル ========= */
+/* サンプル */
 function sampleWords(){return [
 "Friday\t金曜日",
 "Saturday\t土曜日",
@@ -480,7 +500,6 @@ function sampleWords(){return [
 "pencil\t鉛筆",
 "soccer\tサッカー",
 "Library\t図書館",
-"teacher\t先生",
 "family\t家族",
 "river\t川",
 "animal\t動物"
@@ -488,7 +507,7 @@ function sampleWords(){return [
 
 let lastResult=null;
 
-/* ========= 生成ボタン ========= */
+/* 生成ボタン */
 function generate(){
   const items=parseInput(document.getElementById('wordInput').value);
   const size=+document.getElementById('size').value, tries=+document.getElementById('tries').value, seed=document.getElementById('seed').value.trim();
@@ -512,7 +531,7 @@ function generate(){
     : `<span class="okmsg">全語配置できました！</span>`;
 }
 
-/* ========= UI イベント ========= */
+/* UI イベント */
 document.getElementById('genBtn').addEventListener('click',generate);
 document.getElementById('shuffleBtn').addEventListener('click',()=>{document.getElementById('seed').value="";generate()});
 document.getElementById('hideLetters').addEventListener('change',()=>{if(!lastResult)return;const numbering=makeNumbers(lastResult.grid,lastResult.placed);render(lastResult.grid,numbering,document.getElementById('hideLetters').checked)});
@@ -571,7 +590,7 @@ document.getElementById('loadBtn').addEventListener('click', async ()=>{
         for(let k=0;k<p.dispArr.length;k++){
           const r=p.r + (d===DIR.V? k:0);
           const c=p.c + (d===DIR.H? k:0);
-          g.set(r,c,p.dispArr[k]); // 大小保持で復元
+          g.set(r,c,p.dispArr[k]);
         }
       }
       lastResult={grid:g, placed:data.placed, unplaced:data.unplaced||[], seed:data.seed||""};
