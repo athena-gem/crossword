@@ -5,10 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
 <title>英語クロスワード自動生成（日本語ヒント）— 教材専用</title>
+
+<!-- Google Fonts: Quicksand（英字：単層a）, Noto Sans JP（日本語） -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Noto+Sans+JP:wght@400;600&display=swap" rel="stylesheet">
+
 <style>
   :root{--bg:#f7f7fb;--panel:#ffffff;--ink:#1f2330;--muted:#6b7280;--accent:#4f46e5;--ok:#16a34a;--bad:#b91c1c;--grid:#e5e7eb}
   *{box-sizing:border-box}
-  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;color:var(--ink);background:linear-gradient(180deg,#eef0ff,#f7f7fb 25%)}
+  body{
+    margin:0;
+    font-family: "Quicksand","Noto Sans JP",system-ui,-apple-system,"Segoe UI",Roboto,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+    color:var(--ink);
+    background:linear-gradient(180deg,#eef0ff,#f7f7fb 25%);
+  }
   header{padding:20px 16px 8px}
   h1{margin:0 0 4px;font-size:22px}
   .sub{color:var(--muted);font-size:13px}
@@ -29,7 +40,11 @@
   button.bad{background:var(--bad)}
   .small{font-size:12px;color:var(--muted)}
   .grid{width:100%;border-collapse:collapse;table-layout:fixed;user-select:none;background:#fff;border:1px solid var(--grid);border-radius:10px;overflow:hidden}
-  .grid td{width:28px;height:28px;border:1px solid var(--grid);text-align:center;vertical-align:middle;font-weight:700;position:relative}
+  .grid td{
+    width:28px;height:28px;border:1px solid var(--grid);text-align:center;vertical-align:middle;font-weight:700;position:relative;
+    font-family:"Quicksand","Noto Sans JP",sans-serif; /* 盤面も単層a */
+    font-size:18px; line-height:28px;
+  }
   .grid .block{background:#b0b0b0;color:#b0b0b0} /* 印刷で見やすいグレー */
   .grid .num{position:absolute;left:2px;top:1px;font-size:9px;font-weight:700;color:#6b7280}
   .legend{display:grid;gap:16px;grid-template-columns:1fr 1fr}
@@ -160,7 +175,6 @@ async function loadConfig(){
       const lines = cfg.words.map(x => `${(x.word||"").trim()},${(x.hint||"").trim()}`).join("\n");
       document.getElementById("wordInput").value = lines;
     }else{
-      // wordsが空ならサンプルを入れておく
       document.getElementById("wordInput").value = sampleWords();
     }
   }catch(err){
@@ -197,62 +211,377 @@ document.getElementById("hashBtn").addEventListener("click", async ()=>{
   const v = document.getElementById("newPass").value;
   if(!v){ document.getElementById("hashOut").textContent="（パスコードを入力）"; return; }
   const h = await sha256Hex(v);
-  const json = `{\n  "pass_hash": "${h}",\n  "policy": "${(POLICY||"").replace(/"/g,'\\"')}",\n  "footer": "${(FOOTER||"").replace(/"/g,'\\"')}",\n  "words": [\n    { "word": "soccer", "hint": "サッカー" }\n  ]\n}`;
+  const json = `{\n  "pass_hash": "${h}",\n  "policy": "${(POLICY||"").replace(/"/g,'\\"')}",\n  "footer": "${(FOOTER||"").replace(/"/g,'\\"')}"\n}`;
   document.getElementById("hashOut").textContent = json;
 });
 
-/* ====== 以下：クロスワード機能 ====== */
+/* ====== ここからクロスワード機能（大小保持版） ====== */
+
+/* 入力語から「文字だけ」を取り出す（表示用は元の大小を保持） */
+function lettersDisplayArray(word){
+  const arr=[]; for(const ch of word){ if(/[A-Za-z]/.test(ch)) arr.push(ch); }
+  return arr; // e.g. "Mt. Fuji" -> ["M","t","F","u","j","i"]
+}
+function lettersUpperArray(word){
+  return lettersDisplayArray(word).map(ch => ch.toUpperCase());
+}
+
 function rngFromSeed(seed){let h=1779033703^seed.length;for(let i=0;i<seed.length;i++){h=Math.imul(h^seed.charCodeAt(i),3432918353);h=(h<<13)|(h>>>19)}return function(){h=Math.imul(h^(h>>>16),2246822507);h=Math.imul(h^(h>>>13),3266489909);let t=(h^=h>>>16)>>>0;return t/4294967296}}
 function shuffle(a,rnd=Math.random){for(let i=a.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[a[i],a[j]]=[a[j],a[i]]}}
-function sanitizeWord(w){return w.toUpperCase().replace(/[^A-Z]/g,"")}
+
 const DIR={H:0,V:1};
-class Grid{constructor(n){this.n=n;this.cells=Array.from({length:n},()=>Array(n).fill(""))}in(r,c){return r>=0&&r<this.n&&c>=0&&c<this.n}get(r,c){return this.cells[r][c]}set(r,c,ch){this.cells[r][c]=ch}isBlock(r,c){return this.get(r,c)==="#"}placeWord(w,r,c,d){for(let k=0;k<w.length;k++){const rr=r+(d===DIR.V?k:0),cc=c+(d===DIR.H?k:0);this.set(rr,cc,w[k])}}canPlace(w,r,c,d){const n=w.length,N=this.n,dr=(d===DIR.V)?1:0,dc=(d===DIR.H)?1:0;const er=r+dr*(n-1),ec=c+dc*(n-1);if(!(this.in(r,c)&&this.in(er,ec)))return false;for(let k=0;k<n;k++){const rr=r+dr*k,cc=c+dc*k,cell=this.get(rr,cc);if(cell==="#")return false;if(cell!==""&&cell!==w[k])return false;if(n>1&&cell===""){const ar=(d===DIR.H)?[-1,1]:[0,0],ac=(d===DIR.H)?[0,0]:[-1,1];for(let t=0;t<2;t++){const rr2=rr+ar[t],cc2=cc+ac[t];if(this.in(rr2,cc2)){const ne=this.get(rr2,cc2);if(ne!==""&&ne!=="#")return false}}}}const pr=r-dr,pc=c-dc,nr=er+dr,nc=ec+dc;if(this.in(pr,pc)&&this.get(pr,pc)!==""&&this.get(pr,pc)!=="#")return false;if(this.in(nr,nc)&&this.get(nr,nc)!==""&&this.get(nr,nc)!=="#")return false;return true}scorePlacement(w,r,c,d){let s=0,dr=(d===DIR.V)?1:0,dc=(d===DIR.H)?1:0;for(let k=0;k<w.length;k++){const ch=this.get(r+dr*k,c+dc*k);if(ch!==""&&ch!=="#")s++}return s}isConnected(){const N=this.n,seen=Array.from({length:N},()=>Array(N).fill(false));let sr=-1,sc=-1,total=0;for(let r=0;r<N;r++)for(let c=0;c<N;c++){if(this.cells[r][c]!==""&&this.cells[r][c]!=="#"){total++;if(sr<0){sr=r;sc=c}}}if(total===0)return true;const st=[[sr,sc]];seen[sr][sc]=true;let cnt=0;const d=[[1,0],[-1,0],[0,1],[0,-1]];while(st.length){const [r,c]=st.pop();cnt++;for(const[dr,dc]of d){const rr=r+dr,cc=c+dc;if(rr>=0&&cc>=0&&rr<N&&cc<N&&!seen[rr][cc]&&this.cells[rr][cc]!==""&&this.cells[rr][cc]!=="#"){seen[rr][cc]=true;st.push([rr,cc])}}}return cnt===total}}
-function buildCrossword(items,size,tries=400,seedStr=""){const rnd=seedStr?rngFromSeed(seedStr):Math.random;const words=items.map(x=>({w:sanitizeWord(x.word),clue:x.clue})).filter(x=>x.w.length>0);words.sort((a,b)=>b.w.length-a.w.length||a.w.localeCompare(b.w));let best=null;for(let t=0;t<tries;t++){const seed=seedStr?seedStr:(""+Math.random()).slice(2);const rlocal=seedStr?rnd:rngFromSeed(seed);let bucketed=[];let i=0;while(i<words.length){let j=i;while(j<words.length&&words[j].w.length===words[i].w.length)j++;const g=words.slice(i,j);shuffle(g,rlocal);bucketed=bucketed.concat(g);i=j}const g=new Grid(size);const placed=[];const unplaced=[];if(bucketed.length){const first=bucketed[0].w;const d0=rlocal()<.5?DIR.H:DIR.V;const r0=Math.floor(size/2-(d0===DIR.V?Math.floor(first.length/2):0));const c0=Math.floor(size/2-(d0===DIR.H?Math.floor(first.length/2):0));const R0=Math.max(0,Math.min(size-1,r0));const C0=Math.max(0,Math.min(size-1,c0));if(g.canPlace(first,R0,C0,d0)){g.placeWord(first,R0,C0,d0);placed.push({w:first,clue:bucketed[0].clue,r:R0,c:C0,d:d0})}else{let done=false;for(let r=0;r<size&&!done;r++)for(let c=0;c<size&&!done;c++){for(const d of[DIR.H,DIR.V]){if(g.canPlace(first,r,c,d)){g.placeWord(first,r,c,d);placed.push({w:first,clue:bucketed[0].clue,r,c,d});done=true;break}}}if(!placed.length)unplaced.push(bucketed[0])}}for(let idx=1;idx<bucketed.length;idx++){const {w,clue}=bucketed[idx];let bestS=-1,bp=null;for(let r=0;r<size;r++)for(let c=0;c<size;c++){for(const d of[DIR.H,DIR.V]){if(!g.canPlace(w,r,c,d))continue;const sc=g.scorePlacement(w,r,c,d);if(sc>bestS){bestS=sc;bp={r,c,d}}else if(sc===bestS&&Math.random()<.3){bp={r,c,d}}}}if(bp&&(bestS>0||placed.length===0)){g.placeWord(w,bp.r,bp.c,bp.d);placed.push({w,clue,r:bp.r,c:bp.c,d:bp.d})}else{unplaced.push({w,clue})}}if(document.getElementById('forceConnectivity')?.checked){if(!g.isConnected()){}}
-const score=placed.reduce((s,x)=>s+x.w.length,0)+placed.length*2;if(!best||score>best.score)best={grid:g,placed,unplaced,score,seed}}return best}
-function makeNumbers(grid,placed){const N=grid.n;function isStartH(r,c){if(grid.get(r,c)===""||grid.isBlock(r,c))return false;if(c>0&&grid.get(r,c-1)!==""&&grid.get(r,c-1)!=="#")return false;if(c+1<N&&grid.get(r,c+1)!==""&&grid.get(r,c+1)!=="#")return true;return false}
-function isStartV(r,c){if(grid.get(r,c)===""||grid.isBlock(r,c))return false;if(r>0&&grid.get(r-1,c)!==""&&grid.get(r-1,c)!=="#")return false;if(r+1<N&&grid.get(r+1,c)!==""&&grid.get(r+1,c)!=="#")return true;return false}
-let num=1;const numbers=Array.from({length:N},()=>Array(N).fill(null));const A=[],D=[];for(let r=0;r<N;r++)for(let c=0;c<N;c++){if(isStartH(r,c)){A.push({num,r,c});numbers[r][c]=num}if(isStartV(r,c)){const n=numbers[r][c]??num;D.push({num:n,r,c});if(!numbers[r][c])numbers[r][c]=num}if(numbers[r][c]===num)num++}
-function read(r,c,d){let s="";const H=0,V=1;while(r<N&&c<N&&grid.get(r,c)!==""&&grid.get(r,c)!=="#"){s+=grid.get(r,c);if(d===H)c++;else r++}return s}
-function clueOf(ans){const p=placed.find(p=>p.w===ans);return p?p.clue:""}
-const across=[],down=[];for(const st of A){const w=read(st.r,st.c,0);across.push({num:st.num,ans:w,clue:clueOf(w),r:st.r,c:st.c})}
-for(const st of D){const w=read(st.r,st.c,1);down.push({num:st.num,ans:w,clue:clueOf(w),r:st.r,c:st.c})}
-return {numbers,across,down}}
-function render(grid, numbering, hide=false){
-  const N=grid.n, host=document.getElementById('gridHost'); const tbl=document.createElement('table'); tbl.className="grid";
-  for(let r=0;r<N;r++){const tr=document.createElement('tr');for(let c=0;c<N;c++){const td=document.createElement('td');const ch=grid.get(r,c);
-    if(hide){ if(ch===""){td.className="block"} else{td.textContent=""} }
-    else { if(ch==="#"){td.className="block"} else if(ch===""){td.textContent=""} else{td.textContent=ch} }
-    const num=numbering.numbers[r][c]; if(num){const d=document.createElement('div'); d.className="num"; d.textContent=num; td.appendChild(d)}
-    tr.appendChild(td)} tbl.appendChild(tr)}
-  host.innerHTML=""; host.appendChild(tbl);
-  const across=document.getElementById('across'),down=document.getElementById('down');
-  across.innerHTML=numbering.across.map(x=>`<li><span class="mono">${x.num}</span> ${x.clue}</li>`).join("");
-  down.innerHTML=numbering.down.map(x=>`<li><span class="mono">${x.num}</span> ${x.clue}</li>`).join("");
+class Grid{
+  constructor(n){ this.n=n; this.cells=Array.from({length:n},()=>Array(n).fill("")); }
+  in(r,c){ return r>=0&&r<this.n&&c>=0&&c<this.n }
+  get(r,c){ return this.cells[r][c] }
+  set(r,c,ch){ this.cells[r][c]=ch } // ch: display letter（大小そのまま） or "#"
+  isBlock(r,c){ return this.get(r,c)==="#" }
+
+  placeWord(displayLetters, r, c, d){
+    for(let k=0;k<displayLetters.length;k++){
+      const rr=r+(d===DIR.V?k:0), cc=c+(d===DIR.H?k:0);
+      this.set(rr,cc,displayLetters[k]); // 大小そのまま格納
+    }
+  }
+
+  canPlace(displayLetters, r, c, d){
+    const n=displayLetters.length,N=this.n,dr=(d===DIR.V)?1:0,dc=(d===DIR.H)?1:0;
+    const er=r+dr*(n-1), ec=c+dc*(n-1);
+    if(!(this.in(r,c)&&this.in(er,ec))) return false;
+    for(let k=0;k<n;k++){
+      const rr=r+dr*k, cc=c+dc*k, cell=this.get(rr,cc);
+      const wantUpper = displayLetters[k].toUpperCase();
+      if(cell==="#") return false;
+      if(cell!=="" && cell.toUpperCase()!==wantUpper) return false; // 大小無視で一致要求
+      if(n>1 && cell===""){
+        const ar=(d===DIR.H)?[-1,1]:[0,0], ac=(d===DIR.H)?[0,0]:[-1,1];
+        for(let t=0;t<2;t++){
+          const rr2=rr+ar[t], cc2=cc+ac[t];
+          if(this.in(rr2,cc2)){
+            const neigh=this.get(rr2,cc2);
+            if(neigh!=="" && neigh!=="#") return false;
+          }
+        }
+      }
+    }
+    const pr=r-dr, pc=c-dc, nr=er+dr, nc=ec+dc;
+    if(this.in(pr,pc) && this.get(pr,pc)!=="" && this.get(pr,pc)!=="#") return false;
+    if(this.in(nr,nc) && this.get(nr,nc)!=="" && this.get(nr,nc)!=="#") return false;
+    return true;
+  }
+
+  scorePlacement(displayLetters, r, c, d){
+    let crosses=0, dr=(d===DIR.V)?1:0, dc=(d===DIR.H)?1:0;
+    for(let k=0;k<displayLetters.length;k++){
+      const ch=this.get(r+dr*k,c+dc*k);
+      if(ch!=="" && ch!=="#") crosses++;
+    }
+    return crosses;
+  }
+
+  isConnected(){
+    const N=this.n, seen=Array.from({length:N},()=>Array(N).fill(false));
+    let sr=-1,sc=-1,total=0;
+    for(let r=0;r<N;r++) for(let c=0;c<N;c++){
+      if(this.cells[r][c]!=="" && this.cells[r][c]!=="#"){ total++; if(sr<0){sr=r;sc=c} }
+    }
+    if(total===0) return true;
+    const st=[[sr,sc]]; seen[sr][sc]=true; let cnt=0;
+    const d=[[1,0],[-1,0],[0,1],[0,-1]];
+    while(st.length){
+      const [r,c]=st.pop(); cnt++;
+      for(const[dr,dc] of d){
+        const rr=r+dr, cc=c+dc;
+        if(rr>=0&&cc>=0&&rr<N&&cc<N&&!seen[rr][cc] && this.cells[rr][cc]!=="" && this.cells[rr][cc]!=="#"){
+          seen[rr][cc]=true; st.push([rr,cc]);
+        }
+      }
+    }
+    return cnt===total;
+  }
 }
+
+/* ========= 生成アルゴリズム（大小保持） ========= */
+function buildCrossword(items, size, tries=400, seedStr=""){
+  const rnd = seedStr ? rngFromSeed(seedStr) : Math.random;
+  // items: {displayWord, clue, lettersDisp[], lettersUpper[]}
+  const words = items.map(x=>{
+    const dispArr = lettersDisplayArray(x.displayWord);
+    const upArr   = dispArr.map(ch=>ch.toUpperCase());
+    return { displayWord:x.displayWord, clue:x.clue, dispArr, upArr };
+  }).filter(x=> x.dispArr.length>0);
+
+  // 長い語優先（同長は辞書順）
+  words.sort((a,b)=> b.dispArr.length - a.dispArr.length || a.displayWord.localeCompare(b.displayWord, 'en'));
+
+  let best=null;
+  for(let t=0;t<tries;t++){
+    const seed = seedStr ? seedStr : (Math.random()+"").slice(2);
+    const rlocal = seedStr ? rnd : rngFromSeed(seed);
+
+    // 同長バケットをシャッフル
+    let bucketed=[]; let i=0;
+    while(i<words.length){
+      let j=i; while(j<words.length && words[j].dispArr.length===words[i].dispArr.length) j++;
+      const g=words.slice(i,j); shuffle(g, rlocal);
+      bucketed=bucketed.concat(g); i=j;
+    }
+
+    const g=new Grid(size);
+    const placed=[]; // {dispArr, clue, r,c,d}
+    const unplaced=[];
+
+    if(bucketed.length){
+      const first=bucketed[0];
+      const d0 = rlocal()<0.5? DIR.H : DIR.V;
+      const r0=Math.floor(size/2 - (d0===DIR.V? Math.floor(first.dispArr.length/2):0));
+      const c0=Math.floor(size/2 - (d0===DIR.H? Math.floor(first.dispArr.length/2):0));
+      const R0=Math.max(0,Math.min(size-1,r0)), C0=Math.max(0,Math.min(size-1,c0));
+      if(g.canPlace(first.dispArr, R0, C0, d0)){
+        g.placeWord(first.dispArr, R0, C0, d0);
+        placed.push({dispArr:first.dispArr, clue:first.clue, r:R0, c:C0, d:d0});
+      }else{
+        let done=false;
+        for(let r=0;r<size && !done;r++) for(let c=0;c<size && !done;c++){
+          for(const d of [DIR.H,DIR.V]){
+            if(g.canPlace(first.dispArr,r,c,d)){ g.placeWord(first.dispArr,r,c,d); placed.push({dispArr:first.dispArr, clue:first.clue, r,c,d}); done=true; break; }
+          }
+        }
+        if(!placed.length){ unplaced.push(first); }
+      }
+    }
+
+    for(let idx=1; idx<bucketed.length; idx++){
+      const it = bucketed[idx];
+      let bestScore=-1, bestPos=null;
+      for(let r=0;r<size;r++) for(let c=0;c<size;c++){
+        for(const d of [DIR.H,DIR.V]){
+          if(!g.canPlace(it.dispArr, r, c, d)) continue;
+          const sc=g.scorePlacement(it.dispArr, r, c, d);
+          if(sc>bestScore){ bestScore=sc; bestPos={r,c,d}; }
+          else if(sc===bestScore && Math.random()<0.3){ bestPos={r,c,d}; }
+        }
+      }
+      if(bestPos && (bestScore>0 || placed.length===0)){
+        g.placeWord(it.dispArr, bestPos.r, bestPos.c, bestPos.d);
+        placed.push({dispArr:it.dispArr, clue:it.clue, r:bestPos.r, c:bestPos.c, d:bestPos.d});
+      }else{
+        unplaced.push(it);
+      }
+    }
+
+    const score = placed.reduce((s,x)=> s + x.dispArr.length, 0) + placed.length*2;
+    if(!best || score>best.score){ best={grid:g, placed, unplaced, score, seed} }
+  }
+  return best;
+}
+
+/* ========= 番号付け & 出力（座標一致で手掛かりを取得） ========= */
+function makeNumbers(grid, placed){
+  const N=grid.n;
+
+  function isLetterCell(r,c){ const v=grid.get(r,c); return v!=="" && v!=="#"; }
+
+  function isStartH(r,c){
+    if(!isLetterCell(r,c)) return false;
+    if(c>0 && isLetterCell(r,c-1)) return false;
+    if(c+1<N && isLetterCell(r,c+1)) return true;
+    return false;
+  }
+  function isStartV(r,c){
+    if(!isLetterCell(r,c)) return false;
+    if(r>0 && isLetterCell(r-1,c)) return false;
+    if(r+1<N && isLetterCell(r+1,c)) return true;
+    return false;
+  }
+
+  let num=1;
+  const numbers=Array.from({length:N},()=>Array(N).fill(null));
+  const startsA=[], startsD=[];
+  for(let r=0;r<N;r++) for(let c=0;c<N;c++){
+    if(isStartH(r,c)){ startsA.push({num,r,c}); numbers[r][c]=num; }
+    if(isStartV(r,c)){ const n=numbers[r][c]??num; startsD.push({num:n,r,c}); if(!numbers[r][c]) numbers[r][c]=num; }
+    if(numbers[r][c]===num) num++;
+  }
+
+  function readWord(r,c,dir){
+    let s=""; const H=0,V=1;
+    while(r<N && c<N && isLetterCell(r,c)){
+      s+=grid.get(r,c);
+      if(dir===H) c++; else r++;
+    }
+    return s;
+  }
+  function findClueByStart(r,c,dir){
+    const hit = placed.find(p=> p.r===r && p.c===c && p.d===dir);
+    return hit? hit.clue : "";
+  }
+
+  const across=[], down=[];
+  for(const st of startsA){ const w=readWord(st.r,st.c,0); across.push({num:st.num, ans:w, clue:findClueByStart(st.r,st.c,0)}); }
+  for(const st of startsD){ const w=readWord(st.r,st.c,1); down  .push({num:st.num, ans:w, clue:findClueByStart(st.r,st.c,1)}); }
+  return {numbers, across, down};
+}
+
+/* ========= レンダリング（解答の大小を保持） ========= */
+function render(grid, numbering, hide=false){
+  const N=grid.n, host=document.getElementById('gridHost');
+  const tbl=document.createElement('table'); tbl.className="grid";
+  for(let r=0;r<N;r++){
+    const tr=document.createElement('tr');
+    for(let c=0;c<N;c++){
+      const td=document.createElement('td');
+      const ch=grid.get(r,c);
+      if(hide){
+        if(ch===""){ td.className="block"; }
+        else if(ch==="#"){ td.className="block"; }
+        else { td.textContent=""; } // 文字は隠す
+      }else{
+        if(ch==="#"){ td.className="block"; }
+        else if(ch===""){ td.textContent=""; }
+        else { td.textContent = ch; } // 大小そのまま表示
+      }
+      const num = numbering.numbers[r][c];
+      if(num){ const d=document.createElement('div'); d.className="num"; d.textContent=num; td.appendChild(d); }
+      tr.appendChild(td);
+    }
+    tbl.appendChild(tr);
+  }
+  host.innerHTML=""; host.appendChild(tbl);
+
+  const across=document.getElementById('across'), down=document.getElementById('down');
+  across.innerHTML = numbering.across.map(x=> `<li><span class="mono">${x.num}</span> ${x.clue}</li>`).join("");
+  down  .innerHTML = numbering.down  .map(x=> `<li><span class="mono">${x.num}</span> ${x.clue}</li>`).join("");
+}
+
+/* ========= 入力処理 ========= */
 function parseInput(text){
-  const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean); const items=[];
-  for(const line of lines){ const parts=line.split(/\t| {2,}|,|，/); if(parts.length<2) continue;
-    items.push({word:parts[0].trim(), clue:parts.slice(1).join(" ").trim()}); }
+  const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  const items=[];
+  for(const line of lines){
+    const parts = line.split(/\t| {2,}|,|，/);
+    if(parts.length<2) continue;
+    const displayWord = parts[0].trim();   // 大小そのまま保持
+    const clue        = parts.slice(1).join(" ").trim();
+    items.push({displayWord, clue});
+  }
   return items;
 }
-function sampleWords(){return ["apple\tりんご","orange\tオレンジ","grape\tぶどう","library\t図書館","teacher\t先生","student\t生徒","classroom\t教室","pencil\t鉛筆","notebook\tノート","window\t窓","family\t家族","mother\t母","father\t父","music\t音楽","soccer\tサッカー","river\t川","mountain\t山","animal\t動物","science\t理科","history\t歴史"].join("\n")}
+
+/* ========= サンプル ========= */
+function sampleWords(){return [
+"Friday\t金曜日",
+"Saturday\t土曜日",
+"Mt. Fuji\t富士山",
+"the United States\tアメリカ合衆国",
+"apples\tりんご（複数）",
+"holiday\t休日",
+"study\t勉強する",
+"pencil\t鉛筆",
+"soccer\tサッカー",
+"Library\t図書館",
+"teacher\t先生",
+"family\t家族",
+"river\t川",
+"animal\t動物"
+].join("\n")}
+
 let lastResult=null;
+
+/* ========= 生成ボタン ========= */
 function generate(){
   const items=parseInput(document.getElementById('wordInput').value);
   const size=+document.getElementById('size').value, tries=+document.getElementById('tries').value, seed=document.getElementById('seed').value.trim();
-  if(items.length<4){document.getElementById('status').innerHTML='<span class="fail">語彙が少なすぎます。最低4語以上を入れてください。</span>';return}
-  const st=performance.now(); const best=buildCrossword(items,size,tries,seed); lastResult=best;
-  const numbering=makeNumbers(best.grid,best.placed); render(best.grid,numbering,document.getElementById('hideLetters').checked);
-  const dur=Math.round(performance.now()-st); const pc=best.placed.length, tl=best.placed.reduce((s,x)=>s+x.w.length,0);
+
+  if(items.length<4){
+    document.getElementById('status').innerHTML = '<span class="fail">語彙が少なすぎます。最低4語以上を入れてください。</span>';
+    return;
+  }
+
+  const st=performance.now();
+  const best=buildCrossword(items,size,tries,seed);
+  lastResult=best;
+  const numbering=makeNumbers(best.grid,best.placed);
+  render(best.grid,numbering,document.getElementById('hideLetters').checked);
+  const dur=Math.round(performance.now()-st);
+  const pc=best.placed.length, tl=best.placed.reduce((s,x)=>s+x.dispArr.length,0);
   document.getElementById('status').innerHTML=`<span class="okmsg">OK</span> 配置 ${pc}/${items.length} 語、合計文字 ${tl}、seed=${best.seed}、${dur}ms`;
-  const left=best.unplaced.map(x=>x.w).slice(0,10);
-  document.getElementById('unplaced').innerHTML=best.unplaced.length?`<span class="fail">未配置:</span> ${left.join(", ")}${best.unplaced.length>10?" …":""}`:`<span class="okmsg">全語配置できました！</span>`;
+  const left=best.unplaced.map(x=>x.displayWord).slice(0,10);
+  document.getElementById('unplaced').innerHTML = best.unplaced.length
+    ? `<span class="fail">未配置:</span> ${left.join(", ")}${best.unplaced.length>10?" …":""}`
+    : `<span class="okmsg">全語配置できました！</span>`;
 }
+
+/* ========= UI イベント ========= */
 document.getElementById('genBtn').addEventListener('click',generate);
 document.getElementById('shuffleBtn').addEventListener('click',()=>{document.getElementById('seed').value="";generate()});
 document.getElementById('hideLetters').addEventListener('change',()=>{if(!lastResult)return;const numbering=makeNumbers(lastResult.grid,lastResult.placed);render(lastResult.grid,numbering,document.getElementById('hideLetters').checked)});
 document.getElementById('printBtn').addEventListener('click',()=>window.print());
-document.getElementById('pdfBtn').addEventListener('click',async()=>{const node=document.getElementById('puzzleCard');const canvas=await html2canvas(node,{scale:2,background:"#ffffff"});const imgData=canvas.toDataURL('image/jpeg',0.92);const {jsPDF}=window.jspdf;const pdf=new jsPDF('p','mm','a4');const pageW=pdf.internal.pageSize.getWidth();const pageH=pdf.internal.pageSize.getHeight();const margin=10;const imgW=pageW-margin*2;const imgH=canvas.height*imgW/canvas.width;if(imgH<=pageH-margin*2){pdf.addImage(imgData,'JPEG',margin,margin,imgW,imgH)}else{const sliceHpx=Math.floor((pageH-margin*2)*canvas.width/imgW);let pos=0;while(pos<canvas.height){const pageCanvas=document.createElement('canvas');pageCanvas.width=canvas.width;pageCanvas.height=Math.min(sliceHpx,canvas.height-pos);const ctx=pageCanvas.getContext('2d');ctx.drawImage(canvas,0,-pos);const pageData=pageCanvas.toDataURL('image/jpeg',0.92);pdf.addImage(pageData,'JPEG',margin,margin,imgW,pageH-margin*2);pos+=sliceHpx;if(pos<canvas.height)pdf.addPage();}}pdf.save('crossword.pdf')});
+
+/* PDF 出力 */
+document.getElementById('pdfBtn').addEventListener('click',async()=>{
+  const node=document.getElementById('puzzleCard');
+  const canvas=await html2canvas(node,{scale:2,background:"#ffffff"});
+  const imgData=canvas.toDataURL('image/jpeg',0.92);
+  const {jsPDF}=window.jspdf;
+  const pdf=new jsPDF('p','mm','a4');
+  const pageW=pdf.internal.pageSize.getWidth(), pageH=pdf.internal.pageSize.getHeight();
+  const margin=10, imgW=pageW-margin*2, imgH=canvas.height*imgW/canvas.width;
+  if(imgH<=pageH-margin*2){ pdf.addImage(imgData,'JPEG',margin,margin,imgW,imgH); }
+  else{
+    const sliceHpx=Math.floor((pageH-margin*2)*canvas.width/imgW);
+    let pos=0;
+    while(pos<canvas.height){
+      const pageCanvas=document.createElement('canvas');
+      pageCanvas.width=canvas.width;
+      pageCanvas.height=Math.min(sliceHpx,canvas.height-pos);
+      const ctx=pageCanvas.getContext('2d');
+      ctx.drawImage(canvas,0,-pos);
+      const pageData=pageCanvas.toDataURL('image/jpeg',0.92);
+      pdf.addImage(pageData,'JPEG',margin,margin,imgW,pageH-margin*2);
+      pos+=sliceHpx;
+      if(pos<canvas.height) pdf.addPage();
+    }
+  }
+  pdf.save('crossword.pdf');
+});
+
+document.getElementById('saveBtn').addEventListener('click', ()=>{
+  if(!lastResult){ alert("先に生成してください。"); return; }
+  const data = {
+    size:lastResult.grid.n,
+    placed:lastResult.placed,
+    unplaced:lastResult.unplaced,
+    seed:lastResult.seed
+  };
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download="crossword.json"; a.click(); URL.revokeObjectURL(a.href);
+});
+
+document.getElementById('loadBtn').addEventListener('click', async ()=>{
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='application/json';
+  inp.onchange=async e=>{
+    const f=e.target.files[0]; if(!f) return;
+    const txt=await f.text();
+    try{
+      const data=JSON.parse(txt);
+      const N=data.size; const g=new Grid(N);
+      for(const p of data.placed){
+        const d=p.d;
+        for(let k=0;k<p.dispArr.length;k++){
+          const r=p.r + (d===DIR.V? k:0);
+          const c=p.c + (d===DIR.H? k:0);
+          g.set(r,c,p.dispArr[k]); // 大小保持で復元
+        }
+      }
+      lastResult={grid:g, placed:data.placed, unplaced:data.unplaced||[], seed:data.seed||""};
+      const numbering=makeNumbers(lastResult.grid,lastResult.placed);
+      render(lastResult.grid,numbering,document.getElementById('hideLetters').checked);
+      document.getElementById('status').textContent="JSONを読み込みました。";
+    }catch(err){ alert("読み込みに失敗しました: "+err.message) }
+  };
+  inp.click();
+});
 
 /* 起動時：configを読み込み、初期語群を反映 */
 loadConfig();
