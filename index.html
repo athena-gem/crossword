@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>英語クロスワード自動生成（日本語ヒント）— 教材専用</title>
+<style>
+  :root{--bg:#f7f7fb;--panel:#ffffff;--ink:#1f2330;--muted:#6b7280;--accent:#4f46e5;--ok:#16a34a;--bad:#b91c1c;--grid:#e5e7eb}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;color:var(--ink);background:linear-gradient(180deg,#eef0ff,#f7f7fb 25%)}
+  header{padding:20px 16px 8px}
+  h1{margin:0 0 4px;font-size:22px}
+  .sub{color:var(--muted);font-size:13px}
+  .wrap{display:grid;gap:16px;grid-template-columns:360px 1fr;padding:16px}
+  @media(max-width:960px){.wrap{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.06)}
+  .card h2{font-size:16px;margin:0;padding:14px 16px;border-bottom:1px solid #f0f0f3}
+  .card .body{padding:14px 16px}
+  label{display:block;font-size:12px;color:var(--muted);margin:10px 0 6px}
+  input[type="number"],input[type="text"],textarea{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;font-size:14px;background:#fff}
+  textarea{min-height:180px;resize:vertical;line-height:1.5}
+  .row{display:grid;gap:10px;grid-template-columns:repeat(3,1fr)}
+  .row2{display:grid;gap:10px;grid-template-columns:repeat(2,1fr)}
+  .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  button{appearance:none;border:0;padding:10px 14px;border-radius:10px;cursor:pointer;font-weight:600;font-size:14px;background:var(--accent);color:#fff}
+  button.secondary{background:#11182710;color:#111827}
+  button.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+  button.bad{background:var(--bad)}
+  .small{font-size:12px;color:var(--muted)}
+  .grid{width:100%;border-collapse:collapse;table-layout:fixed;user-select:none;background:#fff;border:1px solid var(--grid);border-radius:10px;overflow:hidden}
+  .grid td{width:28px;height:28px;border:1px solid var(--grid);text-align:center;vertical-align:middle;font-weight:700;position:relative}
+  .grid .block{background:#b0b0b0;color:#b0b0b0} /* 印刷で見やすいグレー */
+  .grid .num{position:absolute;left:2px;top:1px;font-size:9px;font-weight:700;color:#6b7280}
+  .legend{display:grid;gap:16px;grid-template-columns:1fr 1fr}
+  .legend h3{margin:0 0 8px;font-size:14px}
+  ul{margin:0;padding-left:18px}
+  li{margin:4px 0}
+  .notice{padding:8px 10px;border-radius:8px;background:#11182708;font-size:12px}
+  .fail{color:var(--bad)} .okmsg{color:var(--ok)}
+  .toggle{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:13px}
+  .toggle input{transform:scale(1.2)}
+  .footer{padding:12px 16px 20px;color:var(--muted);font-size:12px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
+  @media print{header,.card.controls,#policyNote,.footer,.gate{display:none!important}.wrap{grid-template-columns:1fr}body{background:#fff}.card{border:0;box-shadow:none}}
+
+  /* 合言葉ゲート */
+  body.gated{overflow:hidden}
+  .gate{position:fixed;inset:0;background:#fff;display:flex;align-items:center;justify-content:center;z-index:9999}
+  .gatebox{width:min(460px,92%);border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.06);padding:18px;background:#fff}
+  .gate h2{margin:0 0 8px;font-size:18px}
+  .gate p{margin:0 0 12px;color:#555;font-size:14px}
+  .gate input{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:10px;font-size:14px}
+  .gate .row{display:flex;gap:8px;align-items:center;margin-top:12px}
+  .gate .msg{font-size:12px;color:#b91c1c}
+  details{margin-top:10px}
+  summary{cursor:pointer;font-size:12px;color:#4f46e5}
+</style>
+</head>
+<body class="gated">
+
+  <!-- 合言葉ゲート（config.json から読み込み） -->
+  <div id="gate" class="gate">
+    <div class="gatebox">
+      <h2>アクセス専用ページ</h2>
+      <p id="policyShort">配布対象者のみ。合言葉を入力してください。</p>
+      <input id="passInput" type="password" placeholder="passcode">
+      <div class="row">
+        <button id="passBtn" style="border:0;border-radius:10px;padding:10px 14px;background:#4f46e5;color:#fff;font-weight:600">送信</button>
+        <div id="passMsg" class="msg"></div>
+      </div>
+      <details>
+        <summary>管理者向け：新しいパスコードのハッシュを作る</summary>
+        <div class="small" style="margin-top:8px">
+          <input id="newPass" type="text" placeholder="ここに新しいパスコード">
+          <button id="hashBtn" class="ghost" style="margin-top:6px">ハッシュを生成</button>
+          <div id="hashOut" class="mono" style="margin-top:6px;word-break:break-all"></div>
+          <div class="small" style="margin-top:6px">
+            生成結果を <b>config.json</b> に貼って保存してください（HTMLは変更不要）。
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <header>
+    <h1>英語クロスワード自動生成</h1>
+    <div class="sub">答えは英語、ヒントは日本語。小中学生向け。ブラウザだけでOK。</div>
+  </header>
+
+  <!-- 利用条件（config.json の policy を表示） -->
+  <div id="policyNote" class="notice" style="margin:0 16px 8px"></div>
+
+  <div class="wrap">
+    <section class="card controls">
+      <h2>単語とヒント（英語[TAB/空白/カンマ]日本語）</h2>
+      <div class="body">
+        <label>書式（1行1語）</label>
+        <div class="notice mono">apple\tりんご / apple␣␣りんご / apple,りんご / apple，りんご<br>library\t図書館 / teacher\t先生</div>
+        <label>単語リスト</label>
+        <textarea id="wordInput"></textarea>
+
+        <div class="row" style="margin-top:8px">
+          <div><label>グリッドサイズ</label><input type="number" id="size" value="13" min="7" max="25"></div>
+          <div><label>最大試行回数</label><input type="number" id="tries" value="400" min="50" max="3000"></div>
+          <div><label>シード（同じ値で再現）</label><input type="text" id="seed" placeholder="空欄可（乱数）"></div>
+        </div>
+
+        <div class="row2" style="margin-top:6px">
+          <div class="toggle"><input type="checkbox" id="hideLetters"><label for="hideLetters">解答を隠す（配布用にグレーの黒マス表示）</label></div>
+          <div class="toggle"><input type="checkbox" id="forceConnectivity" checked><label for="forceConnectivity">盤面を1つながりにする</label></div>
+        </div>
+
+        <div class="btns">
+          <button id="genBtn">生成する</button>
+          <button class="secondary" id="shuffleBtn">並び替えて再生成</button>
+          <button class="ghost" id="printBtn">印刷</button>
+          <button class="ghost" id="pdfBtn">PDFを作成してダウンロード</button>
+          <button class="ghost" id="saveBtn">JSON保存</button>
+          <button class="ghost" id="loadBtn">JSON読込</button>
+          <button class="bad" id="clearBtn">リセット</button>
+        </div>
+        <div id="status" class="small" style="margin-top:8px"></div>
+      </div>
+    </section>
+
+    <section class="card" id="puzzleCard">
+      <h2>クロスワード</h2>
+      <div class="body">
+        <div id="gridHost" style="overflow:auto"></div>
+        <div class="legend" style="margin-top:16px">
+          <div><h3>よこ</h3><ul id="across"></ul></div>
+          <div><h3>たて</h3><ul id="down"></ul></div>
+        </div>
+        <div id="unplaced" class="small" style="margin-top:10px"></div>
+      </div>
+      <div id="footerText" class="footer"></div>
+    </section>
+  </div>
+
+  <!-- PDF用ライブラリ（CDN） -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+<script>
+/* ====== 設定（config.json）を読み込む ====== */
+let PASS_HASH=""; let POLICY=""; let FOOTER="";
+async function loadConfig(){
+  try{
+    const res = await fetch("config.json", {cache:"no-store"});
+    if(!res.ok) throw new Error("config.json not found");
+    const cfg = await res.json();
+    PASS_HASH = (cfg.pass_hash||"").toLowerCase().trim();
+    POLICY    = cfg.policy || "";
+    FOOTER    = cfg.footer || "";
+    if(POLICY){ document.getElementById("policyNote").textContent = POLICY; document.getElementById("policyShort").textContent = POLICY; }
+    if(FOOTER){ document.getElementById("footerText").textContent = FOOTER; }
+    // 初期語群（任意）を左欄へ流し込む
+    if (Array.isArray(cfg.words) && cfg.words.length){
+      const lines = cfg.words.map(x => `${(x.word||"").trim()},${(x.hint||"").trim()}`).join("\n");
+      document.getElementById("wordInput").value = lines;
+    }else{
+      // wordsが空ならサンプルを入れておく
+      document.getElementById("wordInput").value = sampleWords();
+    }
+  }catch(err){
+    document.getElementById("policyNote").textContent = "設定ファイル（config.json）が見つかりません。管理者に連絡してください。";
+    document.getElementById("wordInput").value = sampleWords();
+  }
+}
+
+/* ====== 合言葉ゲート（抑止用） ====== */
+async function sha256Hex(text){
+  const enc = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest("SHA-256", enc);
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+async function checkPass(){
+  const inp = document.getElementById("passInput").value.trim();
+  if(!PASS_HASH || PASS_HASH.length<64){
+    document.getElementById("passMsg").textContent = "設定エラー：config.json の pass_hash を設定してください。";
+    return;
+  }
+  const got = await sha256Hex(inp);
+  if(got === PASS_HASH){
+    document.getElementById("gate").style.display="none";
+    document.body.classList.remove("gated");
+  }else{
+    document.getElementById("passMsg").textContent = "パスコードが違います。";
+  }
+}
+document.getElementById("passBtn").addEventListener("click", checkPass);
+document.getElementById("passInput").addEventListener("keydown", e=>{ if(e.key==="Enter") checkPass(); });
+
+/* 管理者向け：新パスコードのハッシュ（config.json用）生成 */
+document.getElementById("hashBtn").addEventListener("click", async ()=>{
+  const v = document.getElementById("newPass").value;
+  if(!v){ document.getElementById("hashOut").textContent="（パスコードを入力）"; return; }
+  const h = await sha256Hex(v);
+  const json = `{\n  "pass_hash": "${h}",\n  "policy": "${(POLICY||"").replace(/"/g,'\\"')}",\n  "footer": "${(FOOTER||"").replace(/"/g,'\\"')}",\n  "words": [\n    { "word": "soccer", "hint": "サッカー" }\n  ]\n}`;
+  document.getElementById("hashOut").textContent = json;
+});
+
+/* ====== 以下：クロスワード機能 ====== */
+function rngFromSeed(seed){let h=1779033703^seed.length;for(let i=0;i<seed.length;i++){h=Math.imul(h^seed.charCodeAt(i),3432918353);h=(h<<13)|(h>>>19)}return function(){h=Math.imul(h^(h>>>16),2246822507);h=Math.imul(h^(h>>>13),3266489909);let t=(h^=h>>>16)>>>0;return t/4294967296}}
+function shuffle(a,rnd=Math.random){for(let i=a.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[a[i],a[j]]=[a[j],a[i]]}}
+function sanitizeWord(w){return w.toUpperCase().replace(/[^A-Z]/g,"")}
+const DIR={H:0,V:1};
+class Grid{constructor(n){this.n=n;this.cells=Array.from({length:n},()=>Array(n).fill(""))}in(r,c){return r>=0&&r<this.n&&c>=0&&c<this.n}get(r,c){return this.cells[r][c]}set(r,c,ch){this.cells[r][c]=ch}isBlock(r,c){return this.get(r,c)==="#"}placeWord(w,r,c,d){for(let k=0;k<w.length;k++){const rr=r+(d===DIR.V?k:0),cc=c+(d===DIR.H?k:0);this.set(rr,cc,w[k])}}canPlace(w,r,c,d){const n=w.length,N=this.n,dr=(d===DIR.V)?1:0,dc=(d===DIR.H)?1:0;const er=r+dr*(n-1),ec=c+dc*(n-1);if(!(this.in(r,c)&&this.in(er,ec)))return false;for(let k=0;k<n;k++){const rr=r+dr*k,cc=c+dc*k,cell=this.get(rr,cc);if(cell==="#")return false;if(cell!==""&&cell!==w[k])return false;if(n>1&&cell===""){const ar=(d===DIR.H)?[-1,1]:[0,0],ac=(d===DIR.H)?[0,0]:[-1,1];for(let t=0;t<2;t++){const rr2=rr+ar[t],cc2=cc+ac[t];if(this.in(rr2,cc2)){const ne=this.get(rr2,cc2);if(ne!==""&&ne!=="#")return false}}}}const pr=r-dr,pc=c-dc,nr=er+dr,nc=ec+dc;if(this.in(pr,pc)&&this.get(pr,pc)!==""&&this.get(pr,pc)!=="#")return false;if(this.in(nr,nc)&&this.get(nr,nc)!==""&&this.get(nr,nc)!=="#")return false;return true}scorePlacement(w,r,c,d){let s=0,dr=(d===DIR.V)?1:0,dc=(d===DIR.H)?1:0;for(let k=0;k<w.length;k++){const ch=this.get(r+dr*k,c+dc*k);if(ch!==""&&ch!=="#")s++}return s}isConnected(){const N=this.n,seen=Array.from({length:N},()=>Array(N).fill(false));let sr=-1,sc=-1,total=0;for(let r=0;r<N;r++)for(let c=0;c<N;c++){if(this.cells[r][c]!==""&&this.cells[r][c]!=="#"){total++;if(sr<0){sr=r;sc=c}}}if(total===0)return true;const st=[[sr,sc]];seen[sr][sc]=true;let cnt=0;const d=[[1,0],[-1,0],[0,1],[0,-1]];while(st.length){const [r,c]=st.pop();cnt++;for(const[dr,dc]of d){const rr=r+dr,cc=c+dc;if(rr>=0&&cc>=0&&rr<N&&cc<N&&!seen[rr][cc]&&this.cells[rr][cc]!==""&&this.cells[rr][cc]!=="#"){seen[rr][cc]=true;st.push([rr,cc])}}}return cnt===total}}
+function buildCrossword(items,size,tries=400,seedStr=""){const rnd=seedStr?rngFromSeed(seedStr):Math.random;const words=items.map(x=>({w:sanitizeWord(x.word),clue:x.clue})).filter(x=>x.w.length>0);words.sort((a,b)=>b.w.length-a.w.length||a.w.localeCompare(b.w));let best=null;for(let t=0;t<tries;t++){const seed=seedStr?seedStr:(""+Math.random()).slice(2);const rlocal=seedStr?rnd:rngFromSeed(seed);let bucketed=[];let i=0;while(i<words.length){let j=i;while(j<words.length&&words[j].w.length===words[i].w.length)j++;const g=words.slice(i,j);shuffle(g,rlocal);bucketed=bucketed.concat(g);i=j}const g=new Grid(size);const placed=[];const unplaced=[];if(bucketed.length){const first=bucketed[0].w;const d0=rlocal()<.5?DIR.H:DIR.V;const r0=Math.floor(size/2-(d0===DIR.V?Math.floor(first.length/2):0));const c0=Math.floor(size/2-(d0===DIR.H?Math.floor(first.length/2):0));const R0=Math.max(0,Math.min(size-1,r0));const C0=Math.max(0,Math.min(size-1,c0));if(g.canPlace(first,R0,C0,d0)){g.placeWord(first,R0,C0,d0);placed.push({w:first,clue:bucketed[0].clue,r:R0,c:C0,d:d0})}else{let done=false;for(let r=0;r<size&&!done;r++)for(let c=0;c<size&&!done;c++){for(const d of[DIR.H,DIR.V]){if(g.canPlace(first,r,c,d)){g.placeWord(first,r,c,d);placed.push({w:first,clue:bucketed[0].clue,r,c,d});done=true;break}}}if(!placed.length)unplaced.push(bucketed[0])}}for(let idx=1;idx<bucketed.length;idx++){const {w,clue}=bucketed[idx];let bestS=-1,bp=null;for(let r=0;r<size;r++)for(let c=0;c<size;c++){for(const d of[DIR.H,DIR.V]){if(!g.canPlace(w,r,c,d))continue;const sc=g.scorePlacement(w,r,c,d);if(sc>bestS){bestS=sc;bp={r,c,d}}else if(sc===bestS&&Math.random()<.3){bp={r,c,d}}}}if(bp&&(bestS>0||placed.length===0)){g.placeWord(w,bp.r,bp.c,bp.d);placed.push({w,clue,r:bp.r,c:bp.c,d:bp.d})}else{unplaced.push({w,clue})}}if(document.getElementById('forceConnectivity')?.checked){if(!g.isConnected()){}}
+const score=placed.reduce((s,x)=>s+x.w.length,0)+placed.length*2;if(!best||score>best.score)best={grid:g,placed,unplaced,score,seed}}return best}
+function makeNumbers(grid,placed){const N=grid.n;function isStartH(r,c){if(grid.get(r,c)===""||grid.isBlock(r,c))return false;if(c>0&&grid.get(r,c-1)!==""&&grid.get(r,c-1)!=="#")return false;if(c+1<N&&grid.get(r,c+1)!==""&&grid.get(r,c+1)!=="#")return true;return false}
+function isStartV(r,c){if(grid.get(r,c)===""||grid.isBlock(r,c))return false;if(r>0&&grid.get(r-1,c)!==""&&grid.get(r-1,c)!=="#")return false;if(r+1<N&&grid.get(r+1,c)!==""&&grid.get(r+1,c)!=="#")return true;return false}
+let num=1;const numbers=Array.from({length:N},()=>Array(N).fill(null));const A=[],D=[];for(let r=0;r<N;r++)for(let c=0;c<N;c++){if(isStartH(r,c)){A.push({num,r,c});numbers[r][c]=num}if(isStartV(r,c)){const n=numbers[r][c]??num;D.push({num:n,r,c});if(!numbers[r][c])numbers[r][c]=num}if(numbers[r][c]===num)num++}
+function read(r,c,d){let s="";const H=0,V=1;while(r<N&&c<N&&grid.get(r,c)!==""&&grid.get(r,c)!=="#"){s+=grid.get(r,c);if(d===H)c++;else r++}return s}
+function clueOf(ans){const p=placed.find(p=>p.w===ans);return p?p.clue:""}
+const across=[],down=[];for(const st of A){const w=read(st.r,st.c,0);across.push({num:st.num,ans:w,clue:clueOf(w),r:st.r,c:st.c})}
+for(const st of D){const w=read(st.r,st.c,1);down.push({num:st.num,ans:w,clue:clueOf(w),r:st.r,c:st.c})}
+return {numbers,across,down}}
+function render(grid, numbering, hide=false){
+  const N=grid.n, host=document.getElementById('gridHost'); const tbl=document.createElement('table'); tbl.className="grid";
+  for(let r=0;r<N;r++){const tr=document.createElement('tr');for(let c=0;c<N;c++){const td=document.createElement('td');const ch=grid.get(r,c);
+    if(hide){ if(ch===""){td.className="block"} else{td.textContent=""} }
+    else { if(ch==="#"){td.className="block"} else if(ch===""){td.textContent=""} else{td.textContent=ch} }
+    const num=numbering.numbers[r][c]; if(num){const d=document.createElement('div'); d.className="num"; d.textContent=num; td.appendChild(d)}
+    tr.appendChild(td)} tbl.appendChild(tr)}
+  host.innerHTML=""; host.appendChild(tbl);
+  const across=document.getElementById('across'),down=document.getElementById('down');
+  across.innerHTML=numbering.across.map(x=>`<li><span class="mono">${x.num}</span> ${x.clue}</li>`).join("");
+  down.innerHTML=numbering.down.map(x=>`<li><span class="mono">${x.num}</span> ${x.clue}</li>`).join("");
+}
+function parseInput(text){
+  const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean); const items=[];
+  for(const line of lines){ const parts=line.split(/\t| {2,}|,|，/); if(parts.length<2) continue;
+    items.push({word:parts[0].trim(), clue:parts.slice(1).join(" ").trim()}); }
+  return items;
+}
+function sampleWords(){return ["apple\tりんご","orange\tオレンジ","grape\tぶどう","library\t図書館","teacher\t先生","student\t生徒","classroom\t教室","pencil\t鉛筆","notebook\tノート","window\t窓","family\t家族","mother\t母","father\t父","music\t音楽","soccer\tサッカー","river\t川","mountain\t山","animal\t動物","science\t理科","history\t歴史"].join("\n")}
+let lastResult=null;
+function generate(){
+  const items=parseInput(document.getElementById('wordInput').value);
+  const size=+document.getElementById('size').value, tries=+document.getElementById('tries').value, seed=document.getElementById('seed').value.trim();
+  if(items.length<4){document.getElementById('status').innerHTML='<span class="fail">語彙が少なすぎます。最低4語以上を入れてください。</span>';return}
+  const st=performance.now(); const best=buildCrossword(items,size,tries,seed); lastResult=best;
+  const numbering=makeNumbers(best.grid,best.placed); render(best.grid,numbering,document.getElementById('hideLetters').checked);
+  const dur=Math.round(performance.now()-st); const pc=best.placed.length, tl=best.placed.reduce((s,x)=>s+x.w.length,0);
+  document.getElementById('status').innerHTML=`<span class="okmsg">OK</span> 配置 ${pc}/${items.length} 語、合計文字 ${tl}、seed=${best.seed}、${dur}ms`;
+  const left=best.unplaced.map(x=>x.w).slice(0,10);
+  document.getElementById('unplaced').innerHTML=best.unplaced.length?`<span class="fail">未配置:</span> ${left.join(", ")}${best.unplaced.length>10?" …":""}`:`<span class="okmsg">全語配置できました！</span>`;
+}
+document.getElementById('genBtn').addEventListener('click',generate);
+document.getElementById('shuffleBtn').addEventListener('click',()=>{document.getElementById('seed').value="";generate()});
+document.getElementById('hideLetters').addEventListener('change',()=>{if(!lastResult)return;const numbering=makeNumbers(lastResult.grid,lastResult.placed);render(lastResult.grid,numbering,document.getElementById('hideLetters').checked)});
+document.getElementById('printBtn').addEventListener('click',()=>window.print());
+document.getElementById('pdfBtn').addEventListener('click',async()=>{const node=document.getElementById('puzzleCard');const canvas=await html2canvas(node,{scale:2,background:"#ffffff"});const imgData=canvas.toDataURL('image/jpeg',0.92);const {jsPDF}=window.jspdf;const pdf=new jsPDF('p','mm','a4');const pageW=pdf.internal.pageSize.getWidth();const pageH=pdf.internal.pageSize.getHeight();const margin=10;const imgW=pageW-margin*2;const imgH=canvas.height*imgW/canvas.width;if(imgH<=pageH-margin*2){pdf.addImage(imgData,'JPEG',margin,margin,imgW,imgH)}else{const sliceHpx=Math.floor((pageH-margin*2)*canvas.width/imgW);let pos=0;while(pos<canvas.height){const pageCanvas=document.createElement('canvas');pageCanvas.width=canvas.width;pageCanvas.height=Math.min(sliceHpx,canvas.height-pos);const ctx=pageCanvas.getContext('2d');ctx.drawImage(canvas,0,-pos);const pageData=pageCanvas.toDataURL('image/jpeg',0.92);pdf.addImage(pageData,'JPEG',margin,margin,imgW,pageH-margin*2);pos+=sliceHpx;if(pos<canvas.height)pdf.addPage();}}pdf.save('crossword.pdf')});
+
+/* 起動時：configを読み込み、初期語群を反映 */
+loadConfig();
+</script>
+</body>
+</html>
